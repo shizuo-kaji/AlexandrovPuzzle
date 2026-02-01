@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="230" height="300" viewBox="0 0 230 300">
+  <!-- Outline (black) -->
+  <path d="M 115,15 L 115,65 L 165,65 L 165,115 L 115,115 L 115,165 L 115,215 L 65,215 L 65,165 L 65,115 L 15,115 L 15,65 L 65,65 L 65,15 Z" fill="none" stroke="black" stroke-width="2"/>
+  <!-- Grid lines (black) -->
+  <line x1="65" y1="165" x2="115" y2="165" stroke="black" stroke-width="1"/>
+  <line x1="65" y1="115" x2="115" y2="115" stroke="black" stroke-width="1"/>
+  <line x1="65" y1="65" x2="115" y2="65" stroke="black" stroke-width="1"/>
+  <line x1="65" y1="115" x2="65" y2="65" stroke="black" stroke-width="1"/>
+  <line x1="115" y1="115" x2="115" y2="65" stroke="black" stroke-width="1"/>
+
+  <!-- Fold lines (red) -->
+  <line x1="65" y1="40.0" x2="115" y2="15" stroke="red" stroke-width="1.5"/>
+  <line x1="115" y1="15" x2="65" y2="115" stroke="red" stroke-width="1.5"/>
+  <line x1="65" y1="115" x2="115" y2="165" stroke="red" stroke-width="1.5"/>
+  <line x1="115" y1="165" x2="65" y2="215" stroke="red" stroke-width="1.5"/>
+  <line x1="65" y1="165" x2="115" y2="165" stroke="red" stroke-width="1.5"/>
+  <line x1="115" y1="115" x2="115" y2="65" stroke="red" stroke-width="1.5"/>
+  <line x1="165" y1="115" x2="140.0" y2="65" stroke="red" stroke-width="1.5"/>
+
+  <!-- Vertices (colored by equivalence class) -->
+  <circle cx="115" cy="15" r="4" fill="black"/>
+  <circle cx="115" cy="65" r="4" fill="#e41a1c"/>
+  <circle cx="165" cy="65" r="4" fill="#377eb8"/>
+  <circle cx="165" cy="115" r="4" fill="#4daf4a"/>
+  <circle cx="115" cy="115" r="4" fill="#984ea3"/>
+  <circle cx="115" cy="165" r="4" fill="black"/>
+  <circle cx="115" cy="215" r="4" fill="#984ea3"/>
+  <circle cx="65" cy="215" r="4" fill="#4daf4a"/>
+  <circle cx="65" cy="165" r="4" fill="#ff7f00"/>
+  <circle cx="65" cy="115" r="4" fill="black"/>
+  <circle cx="15" cy="115" r="4" fill="#ff7f00"/>
+  <circle cx="15" cy="65" r="4" fill="#4daf4a"/>
+  <circle cx="65" cy="65" r="4" fill="#377eb8"/>
+  <circle cx="65" cy="15" r="4" fill="#e41a1c"/>
+
+  <!-- Title -->
+  <text x="115" y="292" text-anchor="middle" font-family="sans-serif" font-size="12">P0: [1, 2, 3, 6, 5, 4, 9]</text>
+</svg>
