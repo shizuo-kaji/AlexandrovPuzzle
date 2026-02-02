@@ -13,11 +13,11 @@ solid C0
       vertex 1.028614 -0.128842 -0.224395
     endloop
   endfacet
-  facet normal 0.634886 0.734280 -0.240318
+  facet normal -0.634886 -0.734280 0.240318
     outer loop
       vertex -0.584518 -0.554382 -0.689927
-      vertex -0.193055 -0.344924 0.984255
       vertex 0.251041 -1.028148 0.069933
+      vertex -0.193055 -0.344924 0.984255
     endloop
   endfacet
   facet normal -0.634886 -0.734280 0.240318
@@ -27,32 +27,32 @@ solid C0
       vertex -1.028614 0.128842 0.224395
     endloop
   endfacet
-  facet normal 0.362603 -0.557850 -0.746541
+  facet normal -0.362603 0.557850 0.746541
     outer loop
       vertex -0.251041 1.028148 -0.069933
+      vertex -0.193055 -0.344924 0.984255
       vertex 0.584518 0.554382 0.689927
+    endloop
+  endfacet
+  facet normal -0.362603 0.557850 0.746541
+    outer loop
+      vertex -0.251041 1.028148 -0.069933
+      vertex -1.028614 0.128842 0.224395
       vertex -0.193055 -0.344924 0.984255
     endloop
   endfacet
   facet normal 0.362603 -0.557850 -0.746541
     outer loop
-      vertex -0.251041 1.028148 -0.069933
-      vertex -0.193055 -0.344924 0.984255
-      vertex -1.028614 0.128842 0.224395
-    endloop
-  endfacet
-  facet normal -0.362603 0.557850 0.746541
-    outer loop
       vertex 0.193055 0.344924 -0.984255
-      vertex 0.251041 -1.028148 0.069933
       vertex 1.028614 -0.128842 -0.224395
+      vertex 0.251041 -1.028148 0.069933
     endloop
   endfacet
-  facet normal -0.362603 0.557850 0.746541
+  facet normal 0.362603 -0.557850 -0.746541
     outer loop
       vertex 0.193055 0.344924 -0.984255
-      vertex -0.584518 -0.554382 -0.689927
       vertex 0.251041 -1.028148 0.069933
+      vertex -0.584518 -0.554382 -0.689927
     endloop
   endfacet
   facet normal 0.634886 0.734280 -0.240318
@@ -76,11 +76,11 @@ solid C0
       vertex -1.028614 0.128842 0.224395
     endloop
   endfacet
-  facet normal 0.682231 -0.386828 0.620423
+  facet normal -0.682231 0.386828 -0.620423
     outer loop
       vertex 0.193055 0.344924 -0.984255
-      vertex -0.251041 1.028148 -0.069933
       vertex -1.028614 0.128842 0.224395
+      vertex -0.251041 1.028148 -0.069933
     endloop
   endfacet
 endsolid C0

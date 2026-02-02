@@ -6,11 +6,11 @@ solid Q0
       vertex -1.890038 -0.229689 0.000000
     endloop
   endfacet
-  facet normal 0.000000 -0.000000 -1.000000
+  facet normal -0.000000 0.000000 1.000000
     outer loop
       vertex -0.160218 0.774164 -0.000000
-      vertex 1.206619 0.411181 0.000000
       vertex -1.890038 -0.229689 0.000000
+      vertex 1.206619 0.411181 0.000000
     endloop
   endfacet
   facet normal -0.000000 -0.000000 -1.000000
@@ -20,11 +20,11 @@ solid Q0
       vertex -1.890038 -0.229689 0.000000
     endloop
   endfacet
-  facet normal -0.000000 -0.000000 1.000000
+  facet normal 0.000000 0.000000 -1.000000
     outer loop
       vertex -0.160218 0.774164 -0.000000
-      vertex 0.843636 -0.955656 -0.000000
       vertex 1.206619 0.411181 0.000000
+      vertex 0.843636 -0.955656 -0.000000
     endloop
   endfacet
 endsolid Q0

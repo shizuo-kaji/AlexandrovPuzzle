@@ -6,11 +6,11 @@ solid T0
       vertex -1.824734 0.479286 0.038522
     endloop
   endfacet
-  facet normal 0.018866 -0.448396 0.893636
+  facet normal -0.018866 0.448396 -0.893636
     outer loop
       vertex -0.147095 -0.479286 -0.477874
-      vertex 1.824734 0.479286 -0.038522
       vertex -1.824734 0.479286 0.038522
+      vertex 1.824734 0.479286 -0.038522
     endloop
   endfacet
   facet normal -0.458076 -0.877659 0.141001
@@ -20,11 +20,11 @@ solid T0
       vertex -1.824734 0.479286 0.038522
     endloop
   endfacet
-  facet normal -0.458076 0.877659 0.141001
+  facet normal 0.458076 -0.877659 -0.141001
     outer loop
       vertex -0.147095 -0.479286 -0.477874
-      vertex 0.147095 -0.479286 0.477874
       vertex 1.824734 0.479286 -0.038522
+      vertex 0.147095 -0.479286 0.477874
     endloop
   endfacet
 endsolid T0

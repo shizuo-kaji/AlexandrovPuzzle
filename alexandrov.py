@@ -627,6 +627,9 @@ def save_polyhedron_stl(vertices_3d, filename, solid_name="polyhedron"):
     except Exception:
         return
 
+    # Compute centroid for outward normal check
+    centroid = np.mean(vertices_3d, axis=0)
+
     with open(filename, 'w') as f:
         f.write(f"solid {solid_name}\n")
 
@@ -645,6 +648,14 @@ def save_polyhedron_stl(vertices_3d, filename, solid_name="polyhedron"):
                 normal = normal / norm_length
             else:
                 normal = np.array([0.0, 0.0, 1.0])
+
+            # Ensure normal points outward (away from centroid)
+            face_center = (v0 + v1 + v2) / 3
+            outward_dir = face_center - centroid
+            if np.dot(normal, outward_dir) < 0:
+                # Flip normal and reverse vertex order
+                normal = -normal
+                v0, v1, v2 = v0, v2, v1
 
             # Write facet
             f.write(f"  facet normal {normal[0]:.6f} {normal[1]:.6f} {normal[2]:.6f}\n")
