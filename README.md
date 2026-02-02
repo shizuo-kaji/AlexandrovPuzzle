@@ -39,9 +39,9 @@ The program creates an `output/` directory containing nets of resulting polyhedr
 
 ## Algorithm
 
-Vertices are numbered 1-14 counterclockwise.
+Vertices are numbered 1-14 clockwise.
 ```
-        1---14
+        14---1
         |    |
    12---13   2---3
    |            |

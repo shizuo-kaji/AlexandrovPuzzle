@@ -4,6 +4,8 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.optimize import minimize
+from scipy.spatial import ConvexHull
 import os
 
 # ============================================
@@ -180,7 +182,7 @@ class ChuckFolder:
         # Restore state
         uf.parent[:] = uf_backup.parent
 
-def classify_results(T, Equ):
+def remove_mirrors(T, Equ):
     """Remove symmetric duplicates from results."""
     # Compute mirror images (left-right symmetry: vertex i -> 15-i)
     mirrors = []
@@ -210,127 +212,649 @@ def classify_results(T, Equ):
 
 def classify_polyhedron(equivalence):
     """
-    Classify polyhedron type based on the multiset of angles at essential vertices.
-    Essential vertices have angle sum < 360 degrees.
-    Returns: 'T' (tetrahedron), 'P' (pentahedron), 'O' (octahedron), 'C' (cube), 'Q' (doubly covered pentagon)
+    Classify polyhedron type based on number of essential vertices and deficit pattern.
+
+    Returns:
+        'C' - Cube (8 vertices)
+        'T' - Tetrahedron (4 vertices)
+        'Q' - Double-covered quadrilateral (4 vertices)
+        'P' - Pentahedron (5 vertices)
+        'O' - Octahedron (6 vertices)
     """
-    # Calculate angle sums for each equivalence class
-    angle_sums = []
+    essential_vertices = get_essential_vertices(equivalence)
+    n = len(essential_vertices)
+
+    if n < 4:
+        return 'C'  # Degenerate case
+
+    deficits = sorted([d for _, _, d in essential_vertices])
+
+    if n == 4:
+        # Distinguish T (tetrahedron) from Q (doubly-covered quadrilateral)
+        # T: symmetric deficits like [90, 90, 270, 270] - 2 distinct values
+        # Q: asymmetric deficits like [90, 180, 180, 270] - 3 distinct values
+        unique_deficits = len(set(deficits))
+        if unique_deficits == 2:
+            return 'T'  # Tetrahedron (symmetric)
+        else:
+            return 'Q'  # Doubly-covered quadrilateral (asymmetric)
+    elif n == 5:
+        return 'P'  # Pentahedron
+    elif n == 6:
+        return 'O'  # Octahedron
+    elif n == 8:
+        return 'C'  # Cube
+    else:
+        return 'C'  # Default for unexpected cases
+
+
+# ============================================
+# 3D Polyhedron Reconstruction
+# ============================================
+
+def get_essential_vertices(equivalence):
+    """
+    Get essential vertices (those with angular deficit > 0).
+    Returns list of (equivalence_class, angle_sum, deficit) tuples.
+    """
+    essential = []
     seen = set()
     for eq in equivalence:
         eq_tuple = tuple(sorted(eq))
         if eq_tuple not in seen:
             seen.add(eq_tuple)
             angle_sum = sum(INITIAL_ANGLES[v - 1] for v in eq)
-            angle_sums.append(angle_sum)
+            if angle_sum < 360:
+                deficit = 360 - angle_sum
+                essential.append((list(eq_tuple), angle_sum, deficit))
+    return essential
 
-    # Essential vertices: angle sum < 360 degrees (have positive angular deficit)
-    essential_angles = tuple(sorted([a for a in angle_sums if a < 360]))
 
-    # Classify based on the multiset of angles
-    angle_to_type = {
-        (90, 90, 270, 270): 'T',                          # Tetrahedron
-        (90, 180, 180, 270): 'Q',                          # Doubly covered pentagon
-        (90, 180, 270, 270, 270): 'P',                     # Pentahedron
-        (180, 180, 270, 270, 270, 270): 'O',               # Octahedron
-        (270, 270, 270, 270, 270, 270, 270, 270): 'C',     # Cube
-    }
+def get_net_edges():
+    """
+    Get all edges of the Latin cross net (boundary + internal grid lines).
+    Returns list of (v1, v2, length) tuples.
+    """
+    edges = []
 
-    return angle_to_type.get(essential_angles, '?')
+    # Boundary edges from outline
+    outline = OUTLINE_VERTICES
+    for i in range(len(outline) - 1):
+        v1, v2 = outline[i], outline[i + 1]
+        p1 = np.array(VERTEX_COORDS[v1])
+        p2 = np.array(VERTEX_COORDS[v2])
+        length = np.linalg.norm(p2 - p1)
+        edges.append((v1, v2, length))
+
+    # Internal grid edges (inside the cross)
+    # These connect vertices across the interior
+    internal_edges = [
+        (9, 6),    # (1,1) to (2,1)
+        (10, 5),   # (1,2) to (2,2)
+        (13, 2),   # (1,3) to (2,3)
+        (10, 13),  # (1,2) to (1,3)
+        (5, 2),    # (2,2) to (2,3)
+    ]
+    for v1, v2 in internal_edges:
+        p1 = np.array(VERTEX_COORDS[v1])
+        p2 = np.array(VERTEX_COORDS[v2])
+        length = np.linalg.norm(p2 - p1)
+        edges.append((v1, v2, length))
+
+    return edges
+
+
+def point_in_cross(x, y):
+    """Check if point (x, y) is inside or on the boundary of the Latin cross."""
+    eps = 1e-9
+    # Vertical bar: 1 <= x <= 2, 0 <= y <= 4
+    in_vertical = (1 - eps <= x <= 2 + eps) and (0 - eps <= y <= 4 + eps)
+    # Horizontal bar: 0 <= x <= 3, 2 <= y <= 3
+    in_horizontal = (0 - eps <= x <= 3 + eps) and (2 - eps <= y <= 3 + eps)
+    return in_vertical or in_horizontal
+
+
+def segment_in_cross(p1, p2, n_samples=50):
+    """Check if line segment from p1 to p2 is entirely within the Latin cross."""
+    x1, y1 = p1
+    x2, y2 = p2
+    for i in range(n_samples + 1):
+        t = i / n_samples
+        x = x1 + t * (x2 - x1)
+        y = y1 + t * (y2 - y1)
+        if not point_in_cross(x, y):
+            return False
+    return True
+
+
+def get_glued_edges(equivalence):
+    """
+    Find pairs of boundary edges that are glued together.
+    Two edges (a,b) and (c,d) are glued if a↔c and b↔d (or a↔d and b↔c).
+    Returns list of ((a,b), (c,d), orientation) where orientation is 1 if a↔c,b↔d or -1 if a↔d,b↔c.
+    """
+    # Build vertex-to-class mapping
+    vertex_class = {}
+    for eq in equivalence:
+        eq_frozen = frozenset(eq)
+        for v in eq:
+            vertex_class[v] = eq_frozen
+
+    # Get boundary edges
+    boundary_edges = []
+    outline = OUTLINE_VERTICES
+    for i in range(len(outline) - 1):
+        boundary_edges.append((outline[i], outline[i + 1]))
+
+    # Find glued edge pairs
+    glued_pairs = []
+    for i, (a, b) in enumerate(boundary_edges):
+        for j, (c, d) in enumerate(boundary_edges):
+            if j <= i:
+                continue
+            # Check edge lengths match
+            pa, pb = np.array(VERTEX_COORDS[a]), np.array(VERTEX_COORDS[b])
+            pc, pd = np.array(VERTEX_COORDS[c]), np.array(VERTEX_COORDS[d])
+            len_ab = np.linalg.norm(pb - pa)
+            len_cd = np.linalg.norm(pd - pc)
+            if abs(len_ab - len_cd) > 0.01:
+                continue
+
+            # Check if a↔c and b↔d (same orientation)
+            if vertex_class.get(a) == vertex_class.get(c) and vertex_class.get(b) == vertex_class.get(d):
+                glued_pairs.append(((a, b), (c, d), 1))
+            # Check if a↔d and b↔c (opposite orientation)
+            elif vertex_class.get(a) == vertex_class.get(d) and vertex_class.get(b) == vertex_class.get(c):
+                glued_pairs.append(((a, b), (c, d), -1))
+
+    return glued_pairs
+
+
+def geodesic_through_glued_edge(p1, p2, edge1, edge2, orientation):
+    """
+    Compute geodesic from p1 to p2 crossing through glued edges.
+    edge1 = (a, b), edge2 = (c, d) with vertices glued according to orientation.
+    Returns (distance, crossing_point1, crossing_point2) or None if path is longer.
+    """
+    a, b = np.array(VERTEX_COORDS[edge1[0]], dtype=float), np.array(VERTEX_COORDS[edge1[1]], dtype=float)
+    c, d = np.array(VERTEX_COORDS[edge2[0]], dtype=float), np.array(VERTEX_COORDS[edge2[1]], dtype=float)
+    p1, p2 = np.array(p1, dtype=float), np.array(p2, dtype=float)
+
+    if orientation == -1:
+        c, d = d, c  # Swap to match orientation
+
+    # Point at parameter t on edge1: a + t*(b-a)
+    # Corresponding point on edge2: c + t*(d-c)
+    # Total distance: |p1 - (a + t*(b-a))| + |p2 - (c + t*(d-c))|
+
+    # Use golden section search to minimize
+    def path_length(t):
+        pt1 = a + t * (b - a)
+        pt2 = c + t * (d - c)
+        return np.linalg.norm(p1 - pt1) + np.linalg.norm(p2 - pt2)
+
+    # Golden section search
+    phi = (1 + np.sqrt(5)) / 2
+    tol = 1e-6
+    lo, hi = 0.0, 1.0
+    c1 = hi - (hi - lo) / phi
+    c2 = lo + (hi - lo) / phi
+    f1, f2 = path_length(c1), path_length(c2)
+
+    while hi - lo > tol:
+        if f1 < f2:
+            hi = c2
+            c2 = c1
+            f2 = f1
+            c1 = hi - (hi - lo) / phi
+            f1 = path_length(c1)
+        else:
+            lo = c1
+            c1 = c2
+            f1 = f2
+            c2 = lo + (hi - lo) / phi
+            f2 = path_length(c2)
+
+    t_opt = (lo + hi) / 2
+    crossing1 = tuple(a + t_opt * (b - a))
+    crossing2 = tuple(c + t_opt * (d - c))
+    dist = path_length(t_opt)
+
+    # Check if both segments are in the cross
+    if segment_in_cross(tuple(p1), crossing1) and segment_in_cross(crossing2, tuple(p2)):
+        return (dist, crossing1, crossing2)
+    return None
+
+
+def build_geodesic_graph(equivalence):
+    """
+    Build adjacency matrix for geodesic distances on the folded surface.
+    Considers:
+    - Direct lines within the net
+    - Paths through glued vertices
+    - Geodesics crossing glued edges at non-vertex points
+    """
+    n = M  # 14 vertices
+
+    # Initialize distance matrix with infinity
+    dist = np.full((n + 1, n + 1), np.inf)  # 1-indexed
+    np.fill_diagonal(dist, 0)
+
+    # Add all net edges (boundary + internal)
+    for v1, v2, length in get_net_edges():
+        dist[v1, v2] = min(dist[v1, v2], length)
+        dist[v2, v1] = min(dist[v2, v1], length)
+
+    # Add direct lines through face interiors (geodesics on flat surface)
+    for v1 in range(1, n + 1):
+        for v2 in range(v1 + 1, n + 1):
+            p1 = VERTEX_COORDS[v1]
+            p2 = VERTEX_COORDS[v2]
+            if segment_in_cross(p1, p2):
+                eucl_dist = np.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
+                dist[v1, v2] = min(dist[v1, v2], eucl_dist)
+                dist[v2, v1] = min(dist[v2, v1], eucl_dist)
+
+    # Add zero-distance edges for glued vertices (same equivalence class)
+    for eq in equivalence:
+        for i, v1 in enumerate(eq):
+            for v2 in eq[i + 1:]:
+                dist[v1, v2] = 0
+                dist[v2, v1] = 0
+
+    # Consider geodesics through glued edges (crossing at non-vertex points)
+    glued_edges = get_glued_edges(equivalence)
+    for v1 in range(1, n + 1):
+        for v2 in range(v1 + 1, n + 1):
+            p1 = VERTEX_COORDS[v1]
+            p2 = VERTEX_COORDS[v2]
+            for edge1, edge2, orientation in glued_edges:
+                result = geodesic_through_glued_edge(p1, p2, edge1, edge2, orientation)
+                if result:
+                    d, _, _ = result
+                    if d < dist[v1, v2]:
+                        dist[v1, v2] = d
+                        dist[v2, v1] = d
+                # Also try the reverse direction (p2 to p1 through the gluing)
+                result = geodesic_through_glued_edge(p2, p1, edge1, edge2, orientation)
+                if result:
+                    d, _, _ = result
+                    if d < dist[v1, v2]:
+                        dist[v1, v2] = d
+                        dist[v2, v1] = d
+
+    # Floyd-Warshall for all-pairs shortest paths
+    for k in range(1, n + 1):
+        for i in range(1, n + 1):
+            for j in range(1, n + 1):
+                if dist[i, k] + dist[k, j] < dist[i, j]:
+                    dist[i, j] = dist[i, k] + dist[k, j]
+
+    return dist
+
+
+def reconstruct_3d_polyhedron(equivalence):
+    """
+    Reconstruct 3D polyhedron coordinates from the folding pattern.
+
+    Returns:
+        vertices_3d: numpy array of shape (n_vertices, 3)
+        edges: list of (i, j) tuples (from convex hull)
+        vertex_labels: list of equivalence classes for each vertex
+    """
+    essential = get_essential_vertices(equivalence)
+    n_vertices = len(essential)
+
+    if n_vertices < 4:
+        return None, None, None
+
+    # Build geodesic distance matrix on the folded surface
+    full_dist = build_geodesic_graph(equivalence)
+
+    # Extract distances between essential vertices
+    representatives = [eq[0] for eq, _, _ in essential]
+    dist_matrix = np.zeros((n_vertices, n_vertices))
+    for i in range(n_vertices):
+        for j in range(n_vertices):
+            dist_matrix[i, j] = full_dist[representatives[i], representatives[j]]
+
+    # Use classical MDS (multidimensional scaling) for initial embedding
+    # Classical MDS using eigendecomposition of the Gram matrix
+    def classical_mds(D, n_dims=3):
+        """Classical MDS: find coordinates from distance matrix."""
+        n = D.shape[0]
+        # Double centering
+        J = np.eye(n) - np.ones((n, n)) / n
+        B = -0.5 * J @ (D ** 2) @ J
+        # Eigendecomposition
+        eigvals, eigvecs = np.linalg.eigh(B)
+        # Sort by eigenvalue descending
+        idx = np.argsort(eigvals)[::-1]
+        eigvals = eigvals[idx]
+        eigvecs = eigvecs[:, idx]
+        # Take top n_dims dimensions
+        # Handle negative eigenvalues (non-Euclidean distances)
+        eigvals_pos = np.maximum(eigvals[:n_dims], 0)
+        coords = eigvecs[:, :n_dims] * np.sqrt(eigvals_pos)
+        return coords
+
+    vertices_3d = classical_mds(dist_matrix, 3)
+
+    # Center at origin
+    vertices_3d -= vertices_3d.mean(axis=0)
+
+    # Compute edges from convex hull
+    edges = []
+    try:
+        if n_vertices >= 4:
+            hull = ConvexHull(vertices_3d)
+            # Extract edges from hull simplices (triangular faces)
+            edge_set = set()
+            for simplex in hull.simplices:
+                for k in range(3):
+                    i, j = simplex[k], simplex[(k + 1) % 3]
+                    edge_set.add((min(i, j), max(i, j)))
+            edges = list(edge_set)
+    except Exception:
+        # Fall back to complete graph edges
+        edges = [(i, j) for i in range(n_vertices) for j in range(i + 1, n_vertices)]
+
+    vertex_labels = [eq for eq, _, _ in essential]
+
+    return vertices_3d, edges, vertex_labels
+
+
+def plot_3d_polyhedron(vertices_3d, edges, vertex_labels, title="", ax=None):
+    """Plot the 3D polyhedron using matplotlib."""
+    if vertices_3d is None:
+        return None
+
+    if ax is None:
+        fig = plt.figure(figsize=(8, 8))
+        ax = fig.add_subplot(111, projection='3d')
+    else:
+        fig = ax.figure
+
+    # Plot vertices
+    ax.scatter(vertices_3d[:, 0], vertices_3d[:, 1], vertices_3d[:, 2],
+               s=100, c='blue', alpha=0.8)
+
+    # Label vertices
+    for i, label in enumerate(vertex_labels):
+        ax.text(vertices_3d[i, 0], vertices_3d[i, 1], vertices_3d[i, 2],
+                f'  {label}', fontsize=8)
+
+    # Plot edges
+    for i, j in edges:
+        ax.plot([vertices_3d[i, 0], vertices_3d[j, 0]],
+                [vertices_3d[i, 1], vertices_3d[j, 1]],
+                [vertices_3d[i, 2], vertices_3d[j, 2]],
+                'k-', linewidth=1.5)
+
+    # Try to draw faces using convex hull
+    try:
+        if len(vertices_3d) >= 4:
+            hull = ConvexHull(vertices_3d)
+            for simplex in hull.simplices:
+                triangle = vertices_3d[simplex]
+                ax.plot_trisurf(triangle[:, 0], triangle[:, 1], triangle[:, 2],
+                                alpha=0.3, color='cyan')
+    except Exception:
+        pass
+
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    ax.set_title(title)
+
+    # Equal aspect ratio
+    max_range = np.ptp(vertices_3d, axis=0).max() / 2
+    mid = vertices_3d.mean(axis=0)
+    ax.set_xlim(mid[0] - max_range, mid[0] + max_range)
+    ax.set_ylim(mid[1] - max_range, mid[1] + max_range)
+    ax.set_zlim(mid[2] - max_range, mid[2] + max_range)
+
+    return fig
+
+
+def save_polyhedron_obj(vertices_3d, edges, filename):
+    """Save polyhedron to OBJ file format."""
+    if vertices_3d is None:
+        return
+
+    with open(filename, 'w') as f:
+        f.write(f"# Alexandrov Polyhedron\n")
+        f.write(f"# {len(vertices_3d)} vertices, {len(edges)} edges\n\n")
+
+        # Write vertices
+        for v in vertices_3d:
+            f.write(f"v {v[0]:.6f} {v[1]:.6f} {v[2]:.6f}\n")
+
+        f.write("\n")
+
+        # Write edges as line segments
+        for i, j in edges:
+            f.write(f"l {i+1} {j+1}\n")
+
+        # Try to compute faces using convex hull
+        try:
+            if len(vertices_3d) >= 4:
+                hull = ConvexHull(vertices_3d)
+                f.write("\n# Faces\n")
+                for simplex in hull.simplices:
+                    f.write(f"f {simplex[0]+1} {simplex[1]+1} {simplex[2]+1}\n")
+        except Exception:
+            pass
+
+    print(f"Saved: {filename}")
 
 
 # ============================================
 # SVG Generation
 # ============================================
 
-def get_fold_lines_for_type(poly_type, variant=0):
-    """Get fold lines for each polyhedron type and variant.
-    Returns list of line segments: [((x1, y1), (x2, y2)), ...]
-    Coordinates are mirrored (x -> 3-x) to match the algorithm's vertex numbering.
+def compute_fold_lines(equivalence):
     """
-    fold_lines = {
-        ('Q', 0): [
-            ((1, 3), (2, 3)),
-            ((2, 3), (3, 2)),
-            ((0, 3), (2, 1)),
-            ((2, 1), (1, 0)),
-        ],
-        ('Q', 1): [
-            ((0, 2), (2, 4)),
-            ((2, 2), (2, 3)),
-            ((2, 2), (1, 1)),
-            ((1, 1), (2, 0)),
-        ],
-        ('T', 0): [
-            ((2, 4), (1, 2)),
-            ((1, 2), (2, 2)),
-            ((2, 2), (2, 3)),
-            ((2, 2), (1, 0)),
-            ((1, 0), (2, 2/3)),
-            ((3, 2.5), (8/3, 3)),
-            ((2, 4), (1, 10/3)),
-            ((0.5, 3), (0, 8/3)),
-        ],
-        ('T', 1): [
-            ((1.5, 4), (1, 11/3)),
-            ((0, 3), (2, 2)),
-            ((2, 2), (2, 3)),
-            ((2, 3), (1, 3)),
-            ((2, 3), (3, 2.5)),
-            ((0, 3), (2/3, 2)),
-            ((1, 1.5), (2, 0)),
-            ((2, 0), (1, 0.5)),
-        ],
-        ('P', 0): [
-            ((1, 3.5), (2, 4)),
-            ((2, 4), (1, 2)),
-            ((1, 2), (2, 1)),
-            ((2, 1), (1, 0)),
-            ((1, 1), (2, 1)),
-            ((2, 2), (2, 3)),
-            ((3, 2), (2.5, 3)),
-        ],
-        ('P', 1): [
-            ((0, 3), (1, 2)),
-            ((1, 2), (3, 3)),
-            ((3, 3), (2.5, 2)),
-            ((1, 3), (2, 3)),
-            ((1, 4), (2, 3.5)),
-            ((1, 1), (2, 1)),
-            ((2, 1), (1, 0)),
-        ],
-        ('O', 0): [
-            ((2, 4), (1, 3.5)),
-            ((1, 0), (2, 0.5)),
-            ((2, 1), (1, 1)),
-            ((1, 1), (3, 3)),
-            ((1, 3), (2, 3)),
-            ((2, 3), (2, 2)),
-            ((2, 2), (1, 2)),
-            ((1, 2), (2, 3)),
-            ((1, 2), (0, 3)),
-        ],
-        ('O', 1): [
-            ((2, 4), (1, 3)),
-            ((1, 3), (2, 3)),
-            ((2, 3), (1, 2)),
-            ((1, 2), (1, 3)),
-            ((1, 3), (0, 2)),
-            ((2, 3), (2, 2)),
-            ((3, 3), (2.5, 2)),
-            ((1, 2), (2, 1)),
-            ((2, 1), (1, 1)),
-            ((2, 1), (1.5, 0)),
-        ],
-    }
+    Compute fold lines from the 3D polyhedron structure.
+    Each 3D edge corresponds to a geodesic on the folded surface.
+    Geodesics appear as piecewise straight lines on the 2D net,
+    going through glued vertices.
 
-    return fold_lines.get((poly_type, variant), [])
+    Only includes edges with dihedral angle < 180° (real folded edges).
+
+    Returns list of line segments: [((x1, y1), (x2, y2)), ...]
+    """
+    # Get 3D structure
+    vertices_3d, edges_3d, vertex_labels = reconstruct_3d_polyhedron(equivalence)
+
+    if vertices_3d is None or edges_3d is None:
+        return []
+
+    # Compute dihedral angles to filter out flat edges (angle = 180°)
+    try:
+        hull = ConvexHull(vertices_3d)
+
+        # Build edge to faces mapping
+        edge_faces = {}
+        for face_idx, simplex in enumerate(hull.simplices):
+            for k in range(3):
+                i, j = simplex[k], simplex[(k + 1) % 3]
+                edge = (min(i, j), max(i, j))
+                if edge not in edge_faces:
+                    edge_faces[edge] = []
+                edge_faces[edge].append(face_idx)
+
+        # Compute dihedral angle for each edge
+        def compute_dihedral_angle(edge):
+            """Compute dihedral angle between two faces sharing an edge."""
+            faces = edge_faces.get(edge, [])
+            if len(faces) != 2:
+                return 180.0  # Boundary edge or degenerate
+
+            # Get face normals (pointing outward from hull equations)
+            n1 = hull.equations[faces[0]][:3]
+            n2 = hull.equations[faces[1]][:3]
+
+            # Dihedral angle: angle between outward normals
+            # For convex hull, normals point outward, so dihedral = 180 - angle_between_normals
+            cos_angle = np.clip(np.dot(n1, n2), -1, 1)
+            angle_between = np.degrees(np.arccos(cos_angle))
+            dihedral = 180.0 - angle_between
+
+            return dihedral
+
+        # Filter edges: keep only those with dihedral angle significantly < 180°
+        real_edges = []
+        for edge in edges_3d:
+            edge_key = (min(edge[0], edge[1]), max(edge[0], edge[1]))
+            dihedral = compute_dihedral_angle(edge_key)
+            if dihedral < 179.0:  # Not flat (with small tolerance)
+                real_edges.append(edge)
+
+        edges_3d = real_edges
+
+    except Exception:
+        pass  # Keep all edges if hull computation fails
+
+    # Get geodesic distances
+    full_dist = build_geodesic_graph(equivalence)
+
+    # Build adjacency for path reconstruction (includes direct lines through faces)
+    adj = {i: {} for i in range(1, M + 1)}
+    # Add net edges
+    for v1, v2, length in get_net_edges():
+        adj[v1][v2] = length
+        adj[v2][v1] = length
+    # Add direct lines through face interiors
+    for v1 in range(1, M + 1):
+        for v2 in range(v1 + 1, M + 1):
+            p1 = VERTEX_COORDS[v1]
+            p2 = VERTEX_COORDS[v2]
+            if segment_in_cross(p1, p2):
+                eucl_dist = np.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
+                if v2 not in adj[v1] or eucl_dist < adj[v1][v2]:
+                    adj[v1][v2] = eucl_dist
+                    adj[v2][v1] = eucl_dist
+    # Add zero-distance edges for glued vertices
+    for eq in equivalence:
+        for i, v1 in enumerate(eq):
+            for v2 in eq[i + 1:]:
+                adj[v1][v2] = 0
+                adj[v2][v1] = 0
+
+    def find_shortest_path(start, targets):
+        """Find shortest path using Dijkstra with path reconstruction."""
+        import heapq
+        target_set = set(targets)
+        dist = {i: float('inf') for i in range(1, M + 1)}
+        prev = {i: None for i in range(1, M + 1)}
+        dist[start] = 0
+        pq = [(0, start)]
+
+        while pq:
+            d, u = heapq.heappop(pq)
+            if d > dist[u]:
+                continue
+            if u in target_set:
+                path = []
+                curr = u
+                while curr is not None:
+                    path.append(curr)
+                    curr = prev[curr]
+                return path[::-1]
+            for v, w in adj[u].items():
+                if dist[u] + w < dist[v]:
+                    dist[v] = dist[u] + w
+                    prev[v] = u
+                    heapq.heappush(pq, (dist[v], v))
+        return []
+
+    fold_lines = []
+    seen_edges = set()
+
+    def add_line(p1, p2):
+        """Add a fold line, avoiding duplicates."""
+        if p1 == p2:
+            return
+        edge_key = (min(p1, p2), max(p1, p2))
+        if edge_key not in seen_edges:
+            seen_edges.add(edge_key)
+            fold_lines.append((p1, p2))
+
+    # Get glued edges for geodesic computation
+    glued_edges = get_glued_edges(equivalence)
+
+    # For each 3D edge, find the geodesic path on the 2D net
+    for idx_i, idx_j in edges_3d:
+        eq_i = vertex_labels[idx_i]
+        eq_j = vertex_labels[idx_j]
+        target_dist = full_dist[eq_i[0], eq_j[0]]
+
+        best_segments = None
+        best_dist = float('inf')
+
+        # Option 1: Try direct lines between representative vertices
+        for vi in eq_i:
+            for vj in eq_j:
+                pi = VERTEX_COORDS[vi]
+                pj = VERTEX_COORDS[vj]
+                eucl_dist = np.sqrt((pi[0] - pj[0])**2 + (pi[1] - pj[1])**2)
+
+                if abs(eucl_dist - target_dist) < 0.01 and segment_in_cross(pi, pj):
+                    if eucl_dist < best_dist:
+                        best_dist = eucl_dist
+                        best_segments = [(pi, pj)]
+
+        # Option 2: Try geodesics through glued edges (crossing at non-vertex points)
+        for vi in eq_i:
+            for vj in eq_j:
+                pi = VERTEX_COORDS[vi]
+                pj = VERTEX_COORDS[vj]
+                for edge1, edge2, orientation in glued_edges:
+                    result = geodesic_through_glued_edge(pi, pj, edge1, edge2, orientation)
+                    if result:
+                        d, cross1, cross2 = result
+                        if abs(d - target_dist) < 0.01 and d < best_dist:
+                            best_dist = d
+                            best_segments = [(pi, cross1), (cross2, pj)]
+                    # Also try reverse direction
+                    result = geodesic_through_glued_edge(pj, pi, edge1, edge2, orientation)
+                    if result:
+                        d, cross1, cross2 = result
+                        if abs(d - target_dist) < 0.01 and d < best_dist:
+                            best_dist = d
+                            best_segments = [(pj, cross1), (cross2, pi)]
+
+        # Option 3: Fall back to vertex-path through gluings
+        if best_segments is None:
+            for vi in eq_i:
+                path = find_shortest_path(vi, eq_j)
+                if path:
+                    path_dist = sum(
+                        np.sqrt((VERTEX_COORDS[path[k]][0] - VERTEX_COORDS[path[k+1]][0])**2 +
+                                (VERTEX_COORDS[path[k]][1] - VERTEX_COORDS[path[k+1]][1])**2)
+                        for k in range(len(path) - 1)
+                    )
+                    if path_dist < best_dist:
+                        best_dist = path_dist
+                        segments = []
+                        for k in range(len(path) - 1):
+                            v1, v2 = path[k], path[k + 1]
+                            if adj[v1][v2] >= 0.01:  # Skip glued vertex edges
+                                segments.append((VERTEX_COORDS[v1], VERTEX_COORDS[v2]))
+                        best_segments = segments
+
+        # Add the best segments found
+        if best_segments:
+            for p1, p2 in best_segments:
+                add_line(p1, p2)
+
+    return fold_lines
 
 
-def generate_net_svg(equivalence, title="", scale=50, variant=0):
+def generate_net_svg(equivalence, title="", scale=50):
     """Generate SVG string for a specific folding pattern."""
-    poly_type = classify_polyhedron(equivalence)
-    fold_lines = get_fold_lines_for_type(poly_type, variant)
+    fold_lines = compute_fold_lines(equivalence)
 
     # SVG dimensions
     width = 4 * scale
@@ -370,6 +894,9 @@ def generate_net_svg(equivalence, title="", scale=50, variant=0):
     for (x1, y1), (x2, y2) in fold_lines:
         sx1, sy1 = to_svg(x1, y1)
         sx2, sy2 = to_svg(x2, y2)
+        # Round to avoid floating point artifacts
+        sx1, sy1 = round(sx1, 2), round(sy1, 2)
+        sx2, sy2 = round(sx2, 2), round(sy2, 2)
         fold_lines_svg += f'  <line x1="{sx1}" y1="{sy1}" x2="{sx2}" y2="{sy2}" stroke="red" stroke-width="1.5"/>\n'
 
     # Color palette for equivalence classes
@@ -425,9 +952,9 @@ def generate_net_svg(equivalence, title="", scale=50, variant=0):
     return svg
 
 
-def save_net_svg(equivalence, filename, title="", variant=0):
+def save_net_svg(equivalence, filename, title=""):
     """Save net SVG to file."""
-    svg_content = generate_net_svg(equivalence, title, variant=variant)
+    svg_content = generate_net_svg(equivalence, title)
     with open(filename, 'w') as f:
         f.write(svg_content)
     print(f"Saved: {filename}")
@@ -443,7 +970,7 @@ def main():
     T, Equ = folder.run()
 
     # Classify and remove duplicates
-    results = classify_results(T, Equ)
+    results = remove_mirrors(T, Equ)
 
     # Print results
     print(f"Found {len(results)} unique folding patterns:\n")
@@ -477,31 +1004,33 @@ def main():
     output_dir = "output"
     os.makedirs(output_dir, exist_ok=True)
 
-    # Generate SVG files for each pattern
-    fold_to_variant = {
-        (2, 6, 5, 4, 1, 10, 11): ('Q', 0),  # Q0: 26541ab
-        (1, 2, 3, 5, 4, 7, 8): ('Q', 1),    # Q1: 1235478
-        (1, 2, 3, 5, 4, 8, 7): ('T', 0),    # T0: 1235487
-        (2, 5, 7, 4, 1, 10, 11): ('T', 1),  # T1: 25741ab
-        (1, 2, 3, 6, 5, 4, 9): ('P', 0),    # P0: 1236549
-        (3, 2, 1, 6, 7, 8, 9): ('P', 1),    # P1: 3216789
-        (2, 1, 5, 4, 7, 8, 9): ('O', 0),    # O0: 2154789
-        (2, 1, 6, 5, 10, 9, 4): ('O', 1),   # O1: 2165a94
-    }
-
-    print("\nGenerating SVG files...")
+    # Generate visualizations for each pattern
+    print("\nGenerating visualizations...")
     type_counts = {}
     for i, (fold_seq, equiv) in enumerate(results):
         poly_type = classify_polyhedron(equiv)
-        fold_key = tuple(fold_seq)
-        if fold_key in fold_to_variant:
-            _, variant = fold_to_variant[fold_key]
-        else:
-            variant = type_counts.get(poly_type, 0)
-            type_counts[poly_type] = variant + 1
+        variant = type_counts.get(poly_type, 0)
+        type_counts[poly_type] = variant + 1
+
+        # Generate SVG
         filename = os.path.join(output_dir, f"{poly_type}{variant}.svg")
         title = f"{poly_type}{variant}: {fold_seq}"
-        save_net_svg(equiv, filename, title, variant=variant)
+        save_net_svg(equiv, filename, title)
+
+        # Generate 3D polyhedron
+        vertices_3d, edges, vertex_labels = reconstruct_3d_polyhedron(equiv)
+        if vertices_3d is not None:
+            # Save OBJ file
+            obj_filename = os.path.join(output_dir, f"{poly_type}{variant}.obj")
+            save_polyhedron_obj(vertices_3d, edges, obj_filename)
+
+            # Save plot
+            fig = plot_3d_polyhedron(vertices_3d, edges, vertex_labels, title)
+            if fig:
+                png_filename = os.path.join(output_dir, f"{poly_type}{variant}_3d.png")
+                fig.savefig(png_filename, dpi=150, bbox_inches='tight')
+                plt.close(fig)
+                print(f"Saved: {png_filename}")
 
     print(f"\nOutput saved to: {output_dir}/")
 
