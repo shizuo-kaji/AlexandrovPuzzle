@@ -617,34 +617,45 @@ def plot_3d_polyhedron(vertices_3d, edges, vertex_labels, title="", ax=None):
     return fig
 
 
-def save_polyhedron_obj(vertices_3d, edges, filename):
-    """Save polyhedron to OBJ file format."""
-    if vertices_3d is None:
+def save_polyhedron_stl(vertices_3d, filename, solid_name="polyhedron"):
+    """Save polyhedron to STL file format (ASCII)."""
+    if vertices_3d is None or len(vertices_3d) < 4:
+        return
+
+    try:
+        hull = ConvexHull(vertices_3d)
+    except Exception:
         return
 
     with open(filename, 'w') as f:
-        f.write(f"# Alexandrov Polyhedron\n")
-        f.write(f"# {len(vertices_3d)} vertices, {len(edges)} edges\n\n")
+        f.write(f"solid {solid_name}\n")
 
-        # Write vertices
-        for v in vertices_3d:
-            f.write(f"v {v[0]:.6f} {v[1]:.6f} {v[2]:.6f}\n")
+        for simplex in hull.simplices:
+            # Get the three vertices of the triangle
+            v0 = vertices_3d[simplex[0]]
+            v1 = vertices_3d[simplex[1]]
+            v2 = vertices_3d[simplex[2]]
 
-        f.write("\n")
+            # Compute normal vector using cross product
+            edge1 = v1 - v0
+            edge2 = v2 - v0
+            normal = np.cross(edge1, edge2)
+            norm_length = np.linalg.norm(normal)
+            if norm_length > 1e-10:
+                normal = normal / norm_length
+            else:
+                normal = np.array([0.0, 0.0, 1.0])
 
-        # Write edges as line segments
-        for i, j in edges:
-            f.write(f"l {i+1} {j+1}\n")
+            # Write facet
+            f.write(f"  facet normal {normal[0]:.6f} {normal[1]:.6f} {normal[2]:.6f}\n")
+            f.write(f"    outer loop\n")
+            f.write(f"      vertex {v0[0]:.6f} {v0[1]:.6f} {v0[2]:.6f}\n")
+            f.write(f"      vertex {v1[0]:.6f} {v1[1]:.6f} {v1[2]:.6f}\n")
+            f.write(f"      vertex {v2[0]:.6f} {v2[1]:.6f} {v2[2]:.6f}\n")
+            f.write(f"    endloop\n")
+            f.write(f"  endfacet\n")
 
-        # Try to compute faces using convex hull
-        try:
-            if len(vertices_3d) >= 4:
-                hull = ConvexHull(vertices_3d)
-                f.write("\n# Faces\n")
-                for simplex in hull.simplices:
-                    f.write(f"f {simplex[0]+1} {simplex[1]+1} {simplex[2]+1}\n")
-        except Exception:
-            pass
+        f.write(f"endsolid {solid_name}\n")
 
     print(f"Saved: {filename}")
 
@@ -1020,9 +1031,9 @@ def main():
         # Generate 3D polyhedron
         vertices_3d, edges, vertex_labels = reconstruct_3d_polyhedron(equiv)
         if vertices_3d is not None:
-            # Save OBJ file
-            obj_filename = os.path.join(output_dir, f"{poly_type}{variant}.obj")
-            save_polyhedron_obj(vertices_3d, edges, obj_filename)
+            # Save STL file
+            stl_filename = os.path.join(output_dir, f"{poly_type}{variant}.stl")
+            save_polyhedron_stl(vertices_3d, stl_filename, f"{poly_type}{variant}")
 
             # Save plot
             fig = plot_3d_polyhedron(vertices_3d, edges, vertex_labels, title)
