@@ -3,7 +3,6 @@
 # and visualizes the 2D nets with glued vertices
 
 import numpy as np
-import copy
 import matplotlib.pyplot as plt
 import os
 
@@ -32,12 +31,54 @@ INITIAL_ANGLES = [90, 270, 90, 90, 270, 180, 90, 90, 180, 270, 90, 90, 270, 90]
 # Chuck Folding Algorithm
 # ============================================
 
+class UnionFind:
+    """Union-Find data structure with path compression for equivalence tracking."""
+
+    def __init__(self, n):
+        self.parent = np.arange(n + 1, dtype=np.int32)  # 1-indexed
+
+    def find(self, x):
+        """Find root with path compression."""
+        root = x
+        while self.parent[root] != root:
+            root = self.parent[root]
+        # Path compression
+        while self.parent[x] != root:
+            next_x = self.parent[x]
+            self.parent[x] = root
+            x = next_x
+        return root
+
+    def union(self, x, y):
+        """Unite two sets."""
+        rx, ry = self.find(x), self.find(y)
+        if rx != ry:
+            self.parent[ry] = rx
+
+    def get_equivalence_classes(self):
+        """Convert to list of equivalence classes for output compatibility."""
+        classes = {}
+        for i in range(1, len(self.parent)):
+            root = self.find(i)
+            if root not in classes:
+                classes[root] = []
+            classes[root].append(i)
+        return [classes[self.find(i)] for i in range(1, len(self.parent))]
+
+    def copy(self):
+        """Create a copy of this UnionFind."""
+        new_uf = UnionFind.__new__(UnionFind)
+        new_uf.parent = self.parent.copy()
+        return new_uf
+
+
 class ChuckFolder:
-    """Enumerates all valid chuck folding sequences."""
+    """Enumerates all valid chuck folding sequences using numpy arrays."""
 
     def __init__(self, num_vertices, initial_angles):
         self.M = num_vertices
-        self.initial_angles = initial_angles
+        self.initial_angles = np.array(initial_angles, dtype=np.int32)
+        self.max_depth = num_vertices // 2 + 2
 
     def run(self):
         """Run the enumeration and return (fold_sequences, equivalences)."""
@@ -45,9 +86,9 @@ class ChuckFolder:
         results_Equ = []
 
         for start in range(self.M // 2):
-            state = self._initial_state()
-            if self._can_fold(state, start, 0):
-                self._fold_recursive(state, start, 0, [], results_T, results_Equ)
+            arg, num, uf = self._initial_state()
+            if self._can_fold(arg, 0, start):
+                self._fold_recursive(arg, num, uf, start, 0, [], results_T, results_Equ)
 
         # Sort equivalence classes
         for equiv in results_Equ:
@@ -58,80 +99,86 @@ class ChuckFolder:
         return results_T, results_Equ
 
     def _initial_state(self):
-        """Create initial state for folding."""
-        return {
-            'Arg': [self.initial_angles.copy()] + [[] for _ in range(8)],
-            'N': [list(range(1, self.M + 1))] + [[] for _ in range(8)],
-            'V': [[[i] for i in range(1, self.M + 1)]] + [[] for _ in range(7)],
-        }
+        """Create initial state using numpy arrays."""
+        arg = np.zeros((self.max_depth, self.M), dtype=np.int32)
+        num = np.zeros((self.max_depth, self.M), dtype=np.int32)
+        arg[0, :] = self.initial_angles
+        num[0, :] = np.arange(1, self.M + 1)
+        uf = UnionFind(self.M)
+        return arg, num, uf
 
-    def _can_fold(self, state, i, n=0):
+    def _can_fold(self, arg, n, i):
         """Check if folding at vertex i is valid at depth n."""
         num_vertices = self.M - 2 * n
         i2 = (i - 1) % num_vertices
         i3 = (i + 1) % num_vertices
-        if state['Arg'][n][i3] + state['Arg'][n][i2] < 361:
+        if arg[n, i3] + arg[n, i2] < 361:
             return True
         elif n == self.M // 2 - 1:
             return True
         return False
 
-    def _fold(self, state, i, n):
+    def _fold(self, arg, num, uf, i, n):
         """Perform one fold operation at vertex i, depth n."""
         m = self.M - 2 * n
         i1, i2, i3 = i % m, (i - 1) % m, (i + 1) % m
 
-        arg = copy.deepcopy(state['Arg'][n])
-        num = copy.deepcopy(state['N'][n])
-        ver = copy.deepcopy(state['V'][n])
+        # Copy current level to next level
+        new_arg = arg[n, :m].copy()
+        new_num = num[n, :m].copy()
 
         # Update angles (glue i2 and i3)
-        arg[i2] = arg[i3] = arg[i2] + arg[i3]
+        combined_angle = new_arg[i2] + new_arg[i3]
+        new_arg[i2] = combined_angle
+        new_arg[i3] = combined_angle
 
-        # Merge equivalence classes for glued vertices
-        merged = set(ver[num[i2] - 1]) | set(ver[num[i3] - 1])
-        for v in merged:
-            ver[v - 1] = list(merged)
+        # Merge equivalence classes
+        uf.union(new_num[i2], new_num[i3])
 
-        # Remove i1 and one adjacent (descending order to preserve indices)
-        for idx in sorted([i1, i3 if i2 < i3 else i2], reverse=True):
-            arg.pop(idx)
-            num.pop(idx)
+        # Remove i1 and one adjacent using numpy delete
+        idx_to_remove = sorted([i1, i3 if i2 < i3 else i2], reverse=True)
+        new_arg = np.delete(new_arg, idx_to_remove)
+        new_num = np.delete(new_num, idx_to_remove)
 
-        arg.extend([0, 0])
-        num.extend([0, 0])
-        state['Arg'][n + 1] = arg
-        state['N'][n + 1] = num
-        state['V'][n + 1] = ver
+        # Store in next level
+        new_m = m - 2
+        arg[n + 1, :new_m] = new_arg
+        num[n + 1, :new_m] = new_num
 
-    def _fold_recursive(self, state, i, n, fold_seq, results_T, results_Equ):
+    def _fold_recursive(self, arg, num, uf, i, n, fold_seq, results_T, results_Equ):
         """Recursively explore folding sequences."""
-        self._fold(state, i, n)
-        new_seq = fold_seq + [state['N'][n][i]]
+        # Save state for backtracking
+        uf_backup = uf.copy()
+        arg_backup = arg[n + 1].copy()
+        num_backup = num[n + 1].copy()
+
+        self._fold(arg, num, uf, i, n)
+        new_seq = fold_seq + [int(num[n, i])]
         next_n = n + 1
 
         for j in range(self.M - 2 * next_n):
-            state['Arg'][next_n + 2] = state['Arg'][next_n + 1]
-            state['N'][next_n + 2] = state['N'][next_n + 1]
-            if self._can_fold(state, j, next_n):
+            if self._can_fold(arg, next_n, j):
                 if next_n == self.M // 2 - 1:
-                    self._fold_final(state, j, next_n, new_seq, results_T, results_Equ)
+                    self._fold_final(arg, num, uf, j, next_n, new_seq, results_T, results_Equ)
                 else:
-                    self._fold_recursive(state, j, next_n, new_seq, results_T, results_Equ)
+                    self._fold_recursive(arg, num, uf, j, next_n, new_seq, results_T, results_Equ)
 
-    def _fold_final(self, state, i, n, fold_seq, results_T, results_Equ):
+        # Restore state for backtracking
+        uf.parent[:] = uf_backup.parent
+        arg[n + 1] = arg_backup
+        num[n + 1] = num_backup
+
+    def _fold_final(self, arg, num, uf, i, n, fold_seq, results_T, results_Equ):
         """Handle the final fold step."""
-        self._fold(state, i, n)
-        final_seq = fold_seq + [state['N'][n][i]]
+        uf_backup = uf.copy()
+
+        self._fold(arg, num, uf, i, n)
+        final_seq = fold_seq + [int(num[n, i])]
         results_T.append(final_seq)
-        results_Equ.append(copy.deepcopy(state['V'][n + 1]))
+        results_Equ.append(uf.get_equivalence_classes())
 
-
-def run_enumeration():
-    """Run the chuck folding enumeration."""
-    folder = ChuckFolder(M, INITIAL_ANGLES)
-    return folder.run()
-
+        # Restore state
+        uf.parent[:] = uf_backup.parent
 
 def classify_results(T, Equ):
     """Remove symmetric duplicates from results."""
@@ -202,21 +249,18 @@ def get_fold_lines_for_type(poly_type, variant=0):
     Coordinates are mirrored (x -> 3-x) to match the algorithm's vertex numbering.
     """
     fold_lines = {
-        # Q0 (26541ab): mirrored from TikZ
         ('Q', 0): [
             ((1, 3), (2, 3)),
             ((2, 3), (3, 2)),
             ((0, 3), (2, 1)),
             ((2, 1), (1, 0)),
         ],
-        # Q1 (1235478): mirrored from TikZ
         ('Q', 1): [
             ((0, 2), (2, 4)),
             ((2, 2), (2, 3)),
             ((2, 2), (1, 1)),
             ((1, 1), (2, 0)),
         ],
-        # T0 (1235487): mirrored from TikZ
         ('T', 0): [
             ((2, 4), (1, 2)),
             ((1, 2), (2, 2)),
@@ -227,7 +271,6 @@ def get_fold_lines_for_type(poly_type, variant=0):
             ((2, 4), (1, 10/3)),
             ((0.5, 3), (0, 8/3)),
         ],
-        # T1 (25741ab): mirrored from TikZ
         ('T', 1): [
             ((1.5, 4), (1, 11/3)),
             ((0, 3), (2, 2)),
@@ -238,7 +281,6 @@ def get_fold_lines_for_type(poly_type, variant=0):
             ((1, 1.5), (2, 0)),
             ((2, 0), (1, 0.5)),
         ],
-        # P0 (1236549): mirrored from TikZ
         ('P', 0): [
             ((1, 3.5), (2, 4)),
             ((2, 4), (1, 2)),
@@ -248,7 +290,6 @@ def get_fold_lines_for_type(poly_type, variant=0):
             ((2, 2), (2, 3)),
             ((3, 2), (2.5, 3)),
         ],
-        # P1 (3216789): mirrored from TikZ
         ('P', 1): [
             ((0, 3), (1, 2)),
             ((1, 2), (3, 3)),
@@ -258,7 +299,6 @@ def get_fold_lines_for_type(poly_type, variant=0):
             ((1, 1), (2, 1)),
             ((2, 1), (1, 0)),
         ],
-        # O0 (2154789): mirrored from TikZ
         ('O', 0): [
             ((2, 4), (1, 3.5)),
             ((1, 0), (2, 0.5)),
@@ -270,7 +310,6 @@ def get_fold_lines_for_type(poly_type, variant=0):
             ((1, 2), (2, 3)),
             ((1, 2), (0, 3)),
         ],
-        # O1 (2165a94): mirrored from TikZ
         ('O', 1): [
             ((2, 4), (1, 3)),
             ((1, 3), (2, 3)),
@@ -286,72 +325,6 @@ def get_fold_lines_for_type(poly_type, variant=0):
     }
 
     return fold_lines.get((poly_type, variant), [])
-
-
-def generate_svg(poly_type, variant=0, scale=50):
-    """Generate SVG string for a Latin cross net."""
-    fold_lines = get_fold_lines_for_type(poly_type, variant)
-
-    # SVG dimensions
-    width = 4 * scale
-    height = 5 * scale
-    margin = 10
-
-    # Latin cross outline path
-    outline_points = [
-        (2, 4), (2, 3), (3, 3), (3, 2), (2, 2), (2, 1), (2, 0),
-        (1, 0), (1, 1), (1, 2), (0, 2), (0, 3), (1, 3), (1, 4)
-    ]
-
-    # Internal grid lines (always present)
-    grid_lines = [
-        ((1, 1), (2, 1)),
-        ((1, 2), (2, 2)),
-        ((1, 3), (2, 3)),
-        ((1, 2), (1, 3)),
-        ((2, 2), (2, 3)),
-    ]
-
-    def to_svg(x, y):
-        return (margin + x * scale, margin + (4 - y) * scale)
-
-    # Build outline path
-    outline_path = "M " + " L ".join(f"{to_svg(x, y)[0]},{to_svg(x, y)[1]}" for x, y in outline_points) + " Z"
-
-    # Build grid lines
-    grid_lines_svg = ""
-    for (x1, y1), (x2, y2) in grid_lines:
-        sx1, sy1 = to_svg(x1, y1)
-        sx2, sy2 = to_svg(x2, y2)
-        grid_lines_svg += f'  <line x1="{sx1}" y1="{sy1}" x2="{sx2}" y2="{sy2}" stroke="black" stroke-width="1"/>\n'
-
-    # Build fold lines
-    fold_lines_svg = ""
-    for (x1, y1), (x2, y2) in fold_lines:
-        sx1, sy1 = to_svg(x1, y1)
-        sx2, sy2 = to_svg(x2, y2)
-        fold_lines_svg += f'  <line x1="{sx1}" y1="{sy1}" x2="{sx2}" y2="{sy2}" stroke="red" stroke-width="1.5"/>\n'
-
-    svg = f'''<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="{width + 2*margin}" height="{height + 2*margin}" viewBox="0 0 {width + 2*margin} {height + 2*margin}">
-  <!-- Outline (black) -->
-  <path d="{outline_path}" fill="none" stroke="black" stroke-width="2"/>
-  <!-- Grid lines (black) -->
-{grid_lines_svg}
-  <!-- Fold lines (red) -->
-{fold_lines_svg}
-  <!-- Label -->
-  <text x="{width//2 + margin}" y="{height + margin + 5}" text-anchor="middle" font-family="serif" font-size="14" font-style="italic">{poly_type}<tspan baseline-shift="sub" font-size="10">{variant}</tspan></text>
-</svg>'''
-    return svg
-
-
-def save_svg(poly_type, variant, filename):
-    """Save SVG to file."""
-    svg_content = generate_svg(poly_type, variant)
-    with open(filename, 'w') as f:
-        f.write(svg_content)
-    print(f"Saved: {filename}")
 
 
 def generate_net_svg(equivalence, title="", scale=50, variant=0):
@@ -466,7 +439,8 @@ def save_net_svg(equivalence, filename, title="", variant=0):
 
 def main():
     # Run enumeration
-    T, Equ = run_enumeration()
+    folder = ChuckFolder(M, INITIAL_ANGLES)
+    T, Equ = folder.run()
 
     # Classify and remove duplicates
     results = classify_results(T, Equ)
@@ -498,7 +472,6 @@ def main():
         print(f"  {i+1}. [{poly_type}] Fold: {fold_seq}")
         print(f"     Glued: {glued}")
         print(f"     Essential vertices: {essential}")
-        print(f"     Total deficit: {sum(360 - a for v, a in essential)}°\n")
 
     # Generate visualizations
     output_dir = "output"
