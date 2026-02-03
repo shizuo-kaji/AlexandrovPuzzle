@@ -28,6 +28,52 @@ OUTLINE_VERTICES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 1]
 # Initial angles at each vertex (degrees)
 INITIAL_ANGLES = [90, 270, 90, 90, 270, 180, 90, 90, 180, 270, 90, 90, 270, 90]
 
+# ============================================
+# Utility Functions
+# ============================================
+
+def euclidean_distance(p1, p2):
+    """Calculate Euclidean distance between two points."""
+    p1, p2 = np.asarray(p1), np.asarray(p2)
+    return np.linalg.norm(p2 - p1)
+
+
+def build_vertex_to_class_map(equivalence):
+    """Build mapping from vertex to its equivalence class (as frozenset)."""
+    vertex_class = {}
+    for eq in equivalence:
+        eq_frozen = frozenset(eq)
+        for v in eq:
+            vertex_class[v] = eq_frozen
+    return vertex_class
+
+
+def get_unique_equivalence_classes(equivalence):
+    """Get unique equivalence classes, removing duplicates."""
+    seen = set()
+    unique_classes = []
+    for eq in equivalence:
+        eq_tuple = tuple(sorted(eq))
+        if eq_tuple not in seen:
+            seen.add(eq_tuple)
+            unique_classes.append(list(eq_tuple))
+    return unique_classes
+
+
+def compute_angle_sum(vertices):
+    """Compute sum of initial angles for given vertices."""
+    return sum(INITIAL_ANGLES[v - 1] for v in vertices)
+
+
+def extract_hull_edges(hull):
+    """Extract unique edges from convex hull simplices."""
+    edge_set = set()
+    for simplex in hull.simplices:
+        for k in range(3):
+            i, j = simplex[k], simplex[(k + 1) % 3]
+            edge_set.add((min(i, j), max(i, j)))
+    return list(edge_set)
+
 
 # ============================================
 # Chuck Folding Algorithm
@@ -258,15 +304,11 @@ def get_essential_vertices(equivalence):
     Returns list of (equivalence_class, angle_sum, deficit) tuples.
     """
     essential = []
-    seen = set()
-    for eq in equivalence:
-        eq_tuple = tuple(sorted(eq))
-        if eq_tuple not in seen:
-            seen.add(eq_tuple)
-            angle_sum = sum(INITIAL_ANGLES[v - 1] for v in eq)
-            if angle_sum < 360:
-                deficit = 360 - angle_sum
-                essential.append((list(eq_tuple), angle_sum, deficit))
+    for eq_class in get_unique_equivalence_classes(equivalence):
+        angle_sum = compute_angle_sum(eq_class)
+        if angle_sum < 360:
+            deficit = 360 - angle_sum
+            essential.append((eq_class, angle_sum, deficit))
     return essential
 
 
@@ -333,18 +375,12 @@ def get_glued_edges(equivalence):
     Two edges (a,b) and (c,d) are glued if a↔c and b↔d (or a↔d and b↔c).
     Returns list of ((a,b), (c,d), orientation) where orientation is 1 if a↔c,b↔d or -1 if a↔d,b↔c.
     """
-    # Build vertex-to-class mapping
-    vertex_class = {}
-    for eq in equivalence:
-        eq_frozen = frozenset(eq)
-        for v in eq:
-            vertex_class[v] = eq_frozen
+    # Build vertex-to-class mapping using utility function
+    vertex_class = build_vertex_to_class_map(equivalence)
 
     # Get boundary edges
-    boundary_edges = []
-    outline = OUTLINE_VERTICES
-    for i in range(len(outline) - 1):
-        boundary_edges.append((outline[i], outline[i + 1]))
+    boundary_edges = [(OUTLINE_VERTICES[i], OUTLINE_VERTICES[i + 1])
+                      for i in range(len(OUTLINE_VERTICES) - 1)]
 
     # Find glued edge pairs
     glued_pairs = []
@@ -352,11 +388,9 @@ def get_glued_edges(equivalence):
         for j, (c, d) in enumerate(boundary_edges):
             if j <= i:
                 continue
-            # Check edge lengths match
-            pa, pb = np.array(VERTEX_COORDS[a]), np.array(VERTEX_COORDS[b])
-            pc, pd = np.array(VERTEX_COORDS[c]), np.array(VERTEX_COORDS[d])
-            len_ab = np.linalg.norm(pb - pa)
-            len_cd = np.linalg.norm(pd - pc)
+            # Check edge lengths match using utility function
+            len_ab = euclidean_distance(VERTEX_COORDS[a], VERTEX_COORDS[b])
+            len_cd = euclidean_distance(VERTEX_COORDS[c], VERTEX_COORDS[d])
             if abs(len_ab - len_cd) > 0.01:
                 continue
 
@@ -451,7 +485,7 @@ def build_geodesic_graph(equivalence):
             p1 = VERTEX_COORDS[v1]
             p2 = VERTEX_COORDS[v2]
             if segment_in_cross(p1, p2):
-                eucl_dist = np.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
+                eucl_dist = euclidean_distance(p1, p2)
                 dist[v1, v2] = min(dist[v1, v2], eucl_dist)
                 dist[v2, v1] = min(dist[v2, v1], eucl_dist)
 
@@ -820,7 +854,7 @@ def compute_fold_lines(equivalence):
             for vj in eq_j:
                 pi = VERTEX_COORDS[vi]
                 pj = VERTEX_COORDS[vj]
-                eucl_dist = np.sqrt((pi[0] - pj[0])**2 + (pi[1] - pj[1])**2)
+                eucl_dist = euclidean_distance(pi, pj)
 
                 if abs(eucl_dist - target_dist) < 0.01 and segment_in_cross(pi, pj):
                     if eucl_dist < best_dist:
@@ -853,8 +887,7 @@ def compute_fold_lines(equivalence):
                 path = find_shortest_path(vi, eq_j)
                 if path:
                     path_dist = sum(
-                        np.sqrt((VERTEX_COORDS[path[k]][0] - VERTEX_COORDS[path[k+1]][0])**2 +
-                                (VERTEX_COORDS[path[k]][1] - VERTEX_COORDS[path[k+1]][1])**2)
+                        euclidean_distance(VERTEX_COORDS[path[k]], VERTEX_COORDS[path[k+1]])
                         for k in range(len(path) - 1)
                     )
                     if path_dist < best_dist:
@@ -998,25 +1031,15 @@ def main():
     print(f"Found {len(results)} unique folding patterns:\n")
     for i, (fold_seq, equiv) in enumerate(results):
         poly_type = classify_polyhedron(equiv)
-        glued = sorted([tuple(eq) for eq in equiv if len(eq) >= 2])
-        glued = [list(eq) for eq in set(glued)]
-        glued.sort()
 
-        # Calculate angle sum at each vertex
-        angle_sums = []
-        seen = set()
-        for eq in equiv:
-            eq_tuple = tuple(sorted(eq))
-            if eq_tuple not in seen:
-                seen.add(eq_tuple)
-                # Sum angles for vertices in this equivalence class
-                # INITIAL_ANGLES[i] corresponds to vertex i+1
-                angle_sum = sum(INITIAL_ANGLES[v - 1] for v in eq)
-                angle_sums.append((list(eq_tuple), angle_sum))
+        # Get glued vertices (equivalence classes with 2+ vertices)
+        unique_classes = get_unique_equivalence_classes(equiv)
+        glued = sorted([eq for eq in unique_classes if len(eq) >= 2])
 
-        # Essential vertices (angle sum < 360), sorted by angle in increasing order
-        essential = [(v, a) for v, a in angle_sums if a < 360]
-        essential.sort(key=lambda x: (x[1], x[0]))  # Sort by angle, then by vertex list
+        # Get essential vertices with angle sums
+        essential_verts = get_essential_vertices(equiv)
+        essential = [(v, a) for v, a, _ in essential_verts]
+        essential.sort(key=lambda x: (x[1], x[0]))
 
         print(f"  {i+1}. [{poly_type}] Fold: {fold_seq}")
         print(f"     Glued: {glued}")
