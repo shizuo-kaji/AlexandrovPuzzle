@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f8f7f4" />
+    <meta
+      name="description"
+      content="Explore the Alexandrov Puzzle. Fold a Latin cross into five forms, edit its creases, and make your own paper or 3D-printed puzzle."
+    />
+    <title>Alexandrov Puzzle</title>
+    <link rel="icon" href="./web/assets/mark.svg" type="image/svg+xml" />
+    <link
+      rel="preload"
+      href="./web/assets/instrument-serif.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link rel="stylesheet" href="./web/style.css" />
+  </head>
+  <body>
+    <header class="site-head">
+      <div class="head-inner">
+        <a class="brand" href="./" id="brand"
+          ><img src="./web/assets/mark.svg" alt="" width="35" height="35" /><span>Alexandrov Puzzle</span></a
+        >
+        <nav class="main-nav" aria-label="Navigation">
+          <button class="nav-link active" id="studio-nav" data-i="studio">スタジオ</button>
+          <button class="nav-link" id="guide-nav" data-i="guide">製作ガイド</button>
+        </nav>
+        <div class="language" aria-label="Language">
+          <i data-icon="globe"></i><button id="lang-ja" lang="ja">日本語</button><span>/</span
+          ><button id="lang-en" lang="en">EN</button>
+        </div>
+      </div>
+    </header>
+    <main class="page-shell" id="studio">
+      <div class="intro">
+        <div>
+          <h1>Alexandrov <em>Puzzle</em></h1>
+          <p data-i="intro">ひとつの十字形から生まれる、5種類のかたち。折り線を選んで組み立てよう。</p>
+        </div>
+        <div class="intro-actions">
+          <button class="btn secondary share-button" id="share" data-tip="share">
+            <i data-icon="link"></i><span data-i="shareShort">共有</span>
+          </button>
+          <button class="btn primary" id="export-open">
+            <i data-icon="download"></i><span data-i="export">書き出す</span>
+          </button>
+        </div>
+      </div>
+      <section class="library" aria-labelledby="library-title">
+        <div class="section-head">
+          <div class="head-title">
+            <i data-icon="collection"></i>
+            <h2 id="library-title" data-i="stackTitle">重ねるパターン</h2>
+            <span class="selection-count" id="selected-count"></span>
+          </div>
+          <div class="library-tools">
+            <div class="mode-pick">
+              <button id="mode-original" data-i="originals">原図</button
+              ><button id="mode-mirror" data-i="mirrors">鏡像</button>
+            </div>
+            <button class="text-btn" id="pattern-clear"></button>
+          </div>
+        </div>
+        <div class="pattern-list" id="pattern-list"></div>
+      </section>
+      <div class="workbench">
+        <section class="sim-card panel" id="sim-card" aria-labelledby="sim-title">
+          <div class="stage">
+            <div class="stage-head">
+              <div class="stage-badge">
+                <i data-icon="cube"></i><span id="sim-title" data-i="viewport">3D ビュー</span>
+              </div>
+              <button class="icon-btn glass" id="expand" data-tip="expand">
+                <i data-icon="expand"></i>
+              </button>
+            </div>
+            <canvas id="model-canvas" tabindex="0" aria-label="3D"></canvas>
+            <div class="stage-foot">
+              <div class="model-caption">
+                <span id="model-code" class="model-code"></span><span class="caption-rule"></span
+                ><span id="model-name"></span>
+              </div>
+              <div class="view-tools">
+                <button id="zoom-out" data-tip="zoomOut"><i data-icon="minus"></i></button
+                ><button id="zoom-in" data-tip="zoomIn"><i data-icon="plus"></i></button
+                ><button id="reset-view" data-tip="resetView"><i data-icon="focus"></i></button>
+              </div>
+            </div>
+          </div>
+          <div class="target-row">
+            <label for="target-select" data-i="target">組み立てる形</label
+            ><select id="target-select"></select>
+          </div>
+          <div class="transport">
+            <button class="play" id="play" data-tip="play"><i data-icon="play"></i></button>
+            <div class="scrub">
+              <div class="transport-label">
+                <label for="progress" data-i="assembly">組み立て</label
+                ><output for="progress" id="progress-value">100%</output>
+              </div>
+              <input type="range" min="0" max="100" step="1" value="100" id="progress" />
+              <div class="range-ends">
+                <span data-i="flat">平面</span><span data-i="folded">完成形</span>
+              </div>
+            </div>
+          </div>
+        </section>
+        <section class="net-card panel" aria-labelledby="net-title">
+          <div class="card-heading">
+            <div class="head-title">
+              <i data-icon="net"></i>
+              <h2 id="net-title" data-i="net">展開図</h2>
+            </div>
+            <span class="type-label">2D</span>
+          </div>
+          <div class="net-paper"><svg id="net-preview" role="img"></svg></div>
+          <div class="legend">
+            <span><b class="cut-line"></b><span data-i="cut">切り線</span></span
+            ><span><b class="crease-line"></b><span data-i="crease">折り線</span></span>
+          </div>
+          <button class="btn edit-btn" id="edit-open">
+            <i data-icon="tune"></i><span data-i="edit">折り線を編集</span>
+          </button>
+        </section>
+      </div>
+      <section class="metric-panel panel" aria-labelledby="metric-title">
+        <div class="metric-header">
+          <div class="head-title">
+            <i data-icon="tune"></i>
+            <h2 id="metric-title" data-i="geometryCheck">製作寸法</h2>
+            <span class="selection-count" id="panel-count"></span>
+          </div>
+          <div class="size-control">
+            <label for="design-size" data-i="unit">正方形の一辺</label
+            ><input type="number" id="design-size" min="20" max="60" step="0.1" required value="40" /><span
+              >mm</span
+            >
+          </div>
+        </div>
+        <p class="metric-hint"><span data-i="metricHint"></span> <span data-i="metricGuide"></span></p>
+        <div class="metric-values" id="metric-values"></div>
+        <p role="status" class="metric-warning" id="metric-note" hidden></p>
+      </section>
+    </main>
+    <main class="page-shell guide-page" id="guide-page" hidden></main>
+    <footer class="footer">
+      <div><img src="./web/assets/mark.svg" alt="" width="19" height="19" /><span>Alexandrov Puzzle</span></div>
+      <a
+        href="https://archive.bridgesmathart.org/2022/bridges2022-371.html"
+        target="_blank"
+        rel="noreferrer"
+        >Bridges 2022 <i data-icon="external"></i></a
+      ><a href="https://github.com/shizuo-kaji/AlexandrovPuzzle" target="_blank" rel="noreferrer"
+        >GitHub <i data-icon="external"></i
+      ></a>
+    </footer>
+    <dialog id="editor-dialog" aria-labelledby="editor-title"><div id="editor-content"></div></dialog>
+    <dialog id="export-dialog" aria-labelledby="export-title"><div id="export-content"></div></dialog>
+    <dialog id="share-dialog" aria-labelledby="share-title"><div id="share-content"></div></dialog>
+    <div class="toast" id="notice" role="status" aria-live="polite"></div>
+    <noscript
+      >このスタジオを使うには JavaScript を有効にしてください。Please enable JavaScript to use the
+      studio.</noscript
+    >
+    <script type="module" src="./web/app.js"></script>
+  </body>
+</html>

@@ -1,101 +1,84 @@
-# Alexandrov Puzzle - Latin Cross Folding Visualization
+# Alexandrov Puzzle
 
-<img src="images/image0.jpg" width="500" alt="Alexandrov Puzzle Banner 1">
+**English** · [日本語](README.ja.md)
 
-A Python implementation for exploring the Alexandrov theorem through Latin cross folding patterns. This program enumerates all valid "chuck folding" sequences for a Latin cross and visualizes the 2D nets.
+How many shapes can you make from a single cross of six squares? In Alexandrov Puzzle, the same sheet can close into five different shapes. This browser app lets you design the sheet, watch it fold and make a copy from paper or 3D-printed panels. [Original paper, Bridges 2022](https://archive.bridgesmathart.org/2022/bridges2022-371.html)
 
-This is a companion code for the paper:
-- K. Takenaga, and S. Kaji. [Alexandrov Puzzle](https://archive.bridgesmathart.org/2022/bridges2022-371.html). *Bridges 2022: Mathematics, Art, Music, Architecture, Culture*, pp. 371-374.
+<img src="images/image0.jpg" width="560" alt="The flat Latin-cross puzzle and its folded forms">
 
-## Background
+## How the puzzle works
 
-This program explores how a Latin cross (the classic net of a cube) can be folded into various convex polyhedra using "chuck adhesion".
+The cross has fourteen unit edges around its boundary. Choose which edges to join in pairs and where to fold the paper. Alexandrov’s gluing theorem says that if the joined surface has the topology of a sphere and the angles meeting at every point sum to at most 360°, its intrinsic geometry determines a unique convex polyhedron up to congruence. This includes the flat case of a polygon covered on both sides. A joined edge can run across the middle of a face.
 
-A **Latin cross** is a 14-vertex polygon that can be folded into:
-- Cube (C)
-- Tetrahedron (T)
-- Double-covered pentagon (Q)
-- Pentahedron (P)
-- Octahedron (O)
+We enumerate whole-edge pairings by *zipping*. Each step joins the two boundary edges meeting at a chosen vertex. Repeating the operation closes the surface. The nine crease patterns below give the five possible shapes under these edge-to-edge gluings. The eight non-cube patterns each have a distinct mirror image, marked with a superscript *m* in the studio.
 
-## Features
+| Shape | Original patterns |
+| --- | --- |
+| Cube | C0 |
+| Doubly covered quadrilateral | Q0, Q1 |
+| Tetrahedron | T0, T1 |
+| Pentahedron | P0, P1 |
+| Octahedron | O0, O1 |
 
-- **Chuck folding enumeration**: Finds all valid folding sequences
-- **Equivalence classification**: Groups symmetric patterns (9 unique patterns from the Latin cross)
-- **2D net visualization**: Displays the Latin cross with fold lines and glued vertices
+<details>
+<summary>How the 14 boundary vertices are numbered</summary>
 
-## Requirements
-
-```bash
-pip install numpy matplotlib
+```text
+      14───1
+       │   │
+  12──13   2───3
+   │           │
+  11──10   5───4
+       │   │
+       9   6
+       │   │
+       8───7
 ```
 
-## Usage
+The crease definitions number the boundary vertices clockwise from the upper right corner. The letters A–G on a printed template identify the seven pairs of edges to join for that particular pattern. [Crease definitions](web/geometry/patterns.js)
 
-```bash
-python alexandrov.py
+</details>
+
+## Design a sheet
+
+1. In **Pattern overlays**, select the patterns you want to build. The net shows their combined creases. For example, choose O1 and Q0 to make one sheet that folds into an octahedron or a flat quadrilateral.
+2. Switch **Assembly target** between the selected patterns and move the **Assembly** slider. Use **Edit creases** to try individual folds or display the seven pairs of matching seam letters A–G.
+3. In **Fabrication dimensions**, set the square edge to 20–60 mm. Intersections between creases divide the sheet into panels. Select **Minimum angle**, **Smallest panel** or **Closest vertices** to locate the corresponding feature on the net. Workshop warnings appear below 15°, 25 mm² and 3.2 mm, respectively.
+4. **Share** copies a link to your design, including the crease selection, target and dimensions. **Export** generates the fabrication files in your browser.
+
+![Studio showing an octahedron and the shared crease pattern](images/studio-en.webp)
+
+## Make the puzzle
+
+| Export | What to do with it |
+| --- | --- |
+| Paper net (PDF) | Print on A4 or Letter at 100%. Check the scale bar, cut the outer boundary and fold along the dashed lines. A combined net includes an extra page for each target showing which creases to fold and which edges to join. |
+| Folded model (STL) | Print the assembled shape with shallow grooves marking creases and joined edges. The flat Q models are 2.4 mm thick so that the pattern is visible on both sides. |
+| Tape hinge kit | Print the 1.2 mm panels flat, arrange them on the template, and bridge the hinge gaps with thin tape. |
+| Magnetic bridge kit | Fit disc magnets into the printed panels and sew matching magnets into short fabric bridges. The bridges detach so you can reopen the seams. |
+| Snap link kit | Print the studded panels in rigid filament and the links in flexible TPU. Snap the links over the studs indicated on the placement diagram. |
+
+Each kit ZIP contains the panel files, a full-size template and instructions in English and Japanese. Magnetic and snap kits include fit samples, placement diagrams and part counts. Try the sample with your printer and material before printing the full kit. Open **Build guide** for the assembly sequence.
+
+<img src="images/image1.jpg" height="150" alt="Hinged prototype in its flat and folded states"> <img src="images/image2.jpg" height="150" alt="Original 3D-printed prototypes assembled into different forms">
+
+## Run locally
+
+With Node.js 22 or later, start the development server from the repository root.
+
+```sh
+npm run dev
 ```
-The program creates an `output/` directory containing nets of resulting polyhedra.
 
-## Algorithm
+Open the studio and choose **EN** or **日本語** in the header. [Local studio](http://127.0.0.1:4173/)
 
-Vertices are numbered 1-14 clockwise.
-```
-        14---1
-        |    |
-   12---13   2---3
-   |            |
-   11---10   5---4
-        |    |
-        9    6
-        |    |
-        8----7
-```
-
-1. **Chuck folding**: At each step, select a vertex where the sum of adjacent angles is < 360°
-2. **Vertex identification**: When folding, identify (glue) the two adjacent vertices
-3. **Recursion**: Continue until only 2 vertices remain
-4. **Classification**: Group results by equivalence (including left-right symmetry)
-
-## Folding Patterns
-
-### Doubly Covered Pentagon (Q)
-| Q0 | Q1 |
-|:--:|:--:|
-| ![Q0](output/Q0.svg) | ![Q1](output/Q1.svg) |
-
-### Tetrahedron (T)
-| T0 | T1 |
-|:--:|:--:|
-| ![T0](output/T0.svg) | ![T1](output/T1.svg) |
-
-### Pentahedron (P)
-| P0 | P1 |
-|:--:|:--:|
-| ![P0](output/P0.svg) | ![P1](output/P1.svg) |
-
-### Octahedron (O)
-| O0 | O1 |
-|:--:|:--:|
-| ![O0](output/O0.svg) | ![O1](output/O1.svg) |
-
-### Cube (C)
-| C0 |
-|:--:|
-| ![C0](output/C0.svg) |
-
-
-## 3D printed Models
-
-<img src="images/image1.jpg" width="200" alt="Alexandrov Puzzle Banner 2">
-<img src="images/image2.jpg" width="400" alt="Alexandrov Puzzle Banner 3">
-
+Run `npm test` to check the geometry, fabrication meshes and exports. Run `npm run build` to generate the static site in `dist/`.
 
 ## References
 
-- K. Takenaga, and S. Kaji. [Alexandrov Puzzle](https://archive.bridgesmathart.org/2022/bridges2022-371.html). *Bridges 2022: Mathematics, Art, Music, Architecture, Culture*, pp. 371-374.
-- A. D. Alexandrov. Convex Polyhedra. Springer Monographs in Mathematics, Springer, 2005.
-- E. D. Demaine, M. L. Demaine, A. Lubiw, J. O'Rourke, and I. Pashchenko. "Metamorphosis of the Cube." Proceedings of the 15th Annual ACM Symposium on Computational Geometry (SoCG'99), 409–410, 1999.
-- E. D. Demaine and J. O'Rourke. Geometric Folding Algorithms: Linkages, Origami, Polyhedra. Cambridge University Press, USA, 2008.
-- D. Kane, G. N. Price, and E. D. Demaine. "A pseudopolynomial algorithm for Alexandrov's Theorem." Proceedings of the 11th Algorithms and Data Structures Symposium (WADS 2009), Lecture Notes in Computer Science, 5664, 435–446, 2009.
-- A. Lubiw and J. O'Rourke. "When Can a Polygon Fold to a Polytope?" Proceedings AMS Conference, Lawrenceville, NJ, 1996.
+- Kodai Takenaga and Shizuo Kaji. “Alexandrov Puzzle.” *Proceedings of Bridges 2022*, pp. 371–374. [Paper and supplement](https://archive.bridgesmathart.org/2022/bridges2022-371.html)
+- A. D. Alexandrov. *Convex Polyhedra*. Springer Monographs in Mathematics, 2005. [Book](https://doi.org/10.1007/b137434)
+- Anna Lubiw and Joseph O’Rourke. “When Can a Polygon Fold to a Polytope?” Smith College Technical Report 048, 1996. Presented at the AMS conference in Lawrenceville, New Jersey. [Author’s bibliography](https://www.science.smith.edu/~jorourke/papers.php)
+- Erik Demaine, Martin Demaine, Anna Lubiw, Joseph O’Rourke and Irena Pashchenko. “Metamorphosis of the Cube.” *SoCG ’99*, pp. 409–410. [Paper and video](https://erikdemaine.org/papers/SoCG99v/)
+- Erik D. Demaine and Joseph O’Rourke. *Geometric Folding Algorithms: Linkages, Origami, Polyhedra*. Cambridge University Press, 2007. [Book and supplementary material](https://www.gfalop.org/)
+- Daniel Kane, Gregory N. Price and Erik D. Demaine. “A Pseudopolynomial Algorithm for Alexandrov’s Theorem.” *WADS 2009*, Lecture Notes in Computer Science 5664, pp. 435–446. [Paper](https://erikdemaine.org/papers/Alexandrov_WADS2009/)
