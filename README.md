@@ -1,5 +1,7 @@
 # Alexandrov Puzzle
 
+**[Open the interactive puzzle on GitHub Pages](https://shizuo-kaji.github.io/AlexandrovPuzzle/?lang=en)**
+
 **English** · [日本語](README.ja.md)
 
 How many shapes can you make from a single cross of six squares? In Alexandrov Puzzle, the same sheet can close into five different shapes. This browser app lets you design the sheet, watch it fold and make a copy from paper or 3D-printed panels. [Original paper, Bridges 2022](https://archive.bridgesmathart.org/2022/bridges2022-371.html)

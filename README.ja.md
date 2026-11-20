@@ -1,5 +1,7 @@
 # Alexandrov Puzzle
 
+**[GitHub Pages でパズルを開く](https://shizuo-kaji.github.io/AlexandrovPuzzle/?lang=ja)**
+
 [English](README.md) · **日本語**
 
 6個の正方形でできた十字形から、いくつの形を作れるでしょうか。「アレクサンドロフパズル」では、ヒンジでつながった同じ1枚のシートを5種類の形に折り替えられます。このアプリでは、ブラウザ上で折り線を組み合わせてシートを設計し、折り方を確かめ、紙や3Dプリンタで実物を作れます。[原論文（Bridges 2022）](https://archive.bridgesmathart.org/2022/bridges2022-371.html)
